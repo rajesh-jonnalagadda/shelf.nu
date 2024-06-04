@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Asset, Booking } from "@prisma/client";
 import { Button } from "~/components/shared/button";
 
@@ -8,36 +8,67 @@ import { Spinner } from "../shared/spinner";
 
 export const GenerateBookingPdf = ({
   booking,
-  timeStamp,
 }: {
   booking: {
     id: Booking["id"];
     name: Booking["name"];
     assets: Partial<Asset>[];
   };
-  timeStamp: number;
 }) => {
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null); // Add ref for the iframe
   const totalAssets = booking.assets.length;
-  const url = `/bookings/${booking.id.toString()}/generate-pdf/booking-checklist-${new Date()
-    .toISOString()
-    .slice(0, 10)}.pdf?timeStamp=${timeStamp}`;
+  const url = useRef("");
   const handleIframeLoad = () => {
     setIframeLoaded(true);
   };
 
   const handleMobileView = () => {
-    window.location.href = url;
+    window.location.href = url.current;
   };
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
   const handleOpenDialog = () => {
     setIsDialogOpen(true);
+    url.current = `/bookings/${booking.id.toString()}/generate-pdf/booking-checklist-${new Date()
+      .toISOString()
+      .slice(0, 10)}.pdf?timeStamp=${new Date().getTime()}`;
   };
 
   const handleCloseDialog = () => {
     setIsDialogOpen(false);
+  };
+
+  const handleDownload = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    try {
+      e.preventDefault();
+      const iframe = iframeRef.current;
+      const src = iframe?.src;
+      if (src) {
+        const response = await fetch(src);
+
+        if (!response.ok) {
+          throw new Error("Network response was not ok");
+        }
+
+        const pdfBlob = await response.blob();
+
+        // Create a download link and click it
+        const downloadUrl = URL.createObjectURL(pdfBlob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = `booking-checklist-${new Date()
+          .toISOString()
+          .slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      }
+    } catch (err) {
+      //do nothing for now.
+    }
   };
 
   return (
@@ -67,7 +98,7 @@ export const GenerateBookingPdf = ({
           <div className="flex h-full flex-col px-6">
             <div className="grow">
               {/** Show spinner if no iframe */}
-              {!iframeLoaded && (
+              {!iframeLoaded && url && (
                 <div className="m-4  flex h-full flex-1 flex-col items-center justify-center text-center">
                   <Spinner />
                   <p className="mt-2">Generating PDF...</p>
@@ -79,10 +110,11 @@ export const GenerateBookingPdf = ({
                 >
                   <iframe
                     id="pdfPreview"
+                    ref={iframeRef}
                     width="100%"
                     height="100%"
                     onLoad={handleIframeLoad}
-                    src={url}
+                    src={url.current}
                     title="Booking PDF"
                     allowFullScreen={true}
                   />
@@ -92,6 +124,14 @@ export const GenerateBookingPdf = ({
             <div className="flex justify-end gap-3 py-4">
               <Button variant="secondary" onClick={handleCloseDialog}>
                 Cancel
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!iframeLoaded}
+                icon="download"
+                onClick={handleDownload}
+              >
+                Download
               </Button>
             </div>
           </div>
